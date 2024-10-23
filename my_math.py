@@ -18,3 +18,6 @@ def vec_minus(v1, v2):
 
 def vec_rotate(v, angle):
     return (v[0] * cos(angle) - v[1] * sin(angle), v[0] * sin(angle) + v[1] * cos(angle))
+
+def vec_inverse(v):
+    return (-v[0], -v[1])

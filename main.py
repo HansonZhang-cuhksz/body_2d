@@ -78,18 +78,27 @@ class myJoint:
             return # hips_bias = vec_add(hips_bias, vec_minus(position, pos_to_canvas(self.position)))
         movable_parents = self.find_movable_parents()[::-1]
         src_pos = movable_parents[0].position  # The last movable parent (The fix point)
-        # print("src_pos", src_pos)
-        # print([joint.name for joint in movable_parents])
-        # print("dest_pos", body_pos)
-
-        y = body_pos[0] - src_pos[0]
-        x = -body_pos[1] + src_pos[1]
+        if self.name == "Neck" or self.name == "Head":
+            y = -body_pos[0] + src_pos[0]
+            x = body_pos[1] - src_pos[1]
+        else:
+            y = body_pos[0] - src_pos[0]
+            x = -body_pos[1] + src_pos[1]
         lengths = [joint.length for joint in movable_parents[1:]]
-        angles = ik(x, y, lengths)     # Inverse kinematic
+
+        # Constraints
+        constraints = []
+        for joint in movable_parents[:-1]:
+            constraints.append(joint.rot_limit)
+
+        angles = ik(x, y, lengths, constraints)     # Inverse kinematic
 
         for joint in movable_parents[:-1]:      # Operate
             joint.rotate(angles.pop(0) - joint.rotation)
 
+    def special_joints_alter_rot_limit(self, dest_x, dest_y):
+        if self.name == "LWrist":
+            pass
 
 class Body:
     def __init__(self,
