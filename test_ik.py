@@ -1,5 +1,6 @@
 import tkinter as tk
 from math import atan2, sqrt, cos, sin, pi
+import numpy as np
 
 def constrain_sin_cos(value):
     return max(-1, min(1, value))
@@ -15,20 +16,25 @@ def ik_2links(x, y, l1, l2):
 
     return [theta1, theta2]
 
-def ik_3links(x, y, l1, l2, l3):
-    # Calculate the first two angles using ik_2links
-    theta1, theta2 = ik_2links(x, y, l1, l2)
-    
-    # Calculate the position of the end of the second link
-    x2 = l1 * cos(theta1) + l2 * cos(theta1 + theta2)
-    y2 = l1 * sin(theta1) + l2 * sin(theta1 + theta2)
-    
-    # Calculate the third angle
-    dx = x - x2
-    dy = y - y2
-    theta3 = atan2(dy, dx) - (theta1 + theta2)
-    
-    return [theta1, theta2, theta3]
+def ik_3links(x, y, L1, L2, L3):
+    # Calculate the position of the wrist (ignoring the third link)
+    wrist_x = x - L3 * np.cos(np.arctan2(y, x))
+    wrist_y = y - L3 * np.sin(np.arctan2(y, x))
+
+    # Use the cosine rule to find the angles
+    cos_theta2 = (wrist_x**2 + wrist_y**2 - L1**2 - L2**2) / (2 * L1 * L2)
+    theta2 = np.arccos(np.clip(cos_theta2, -1.0, 1.0))  # Clipping to avoid numerical errors
+
+    theta1 = np.arctan2(wrist_y, wrist_x) - np.arctan2(L2 * np.sin(theta2), L1 + L2 * np.cos(theta2))
+
+    theta3 = np.arctan2(y, x) - theta1 - theta2
+
+    # Convert angles from radians to degrees
+    theta1 = np.degrees(theta1)
+    theta2 = np.degrees(theta2)
+    theta3 = np.degrees(theta3)
+
+    return theta1, theta2, theta3
 
 def visualize():
     x = float(entry_x.get())

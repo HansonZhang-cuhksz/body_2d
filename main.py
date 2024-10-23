@@ -2,10 +2,12 @@ import bvhio
 import tkinter as tk
 from my_math import *
 from inverse_kinematic import ik
+import threading
+import time
 
 STATIC = True
 JOINT_RADIUS = 10
-hips_bias = (400, 400)
+hips_bias = (300, 300)
 
 def set_hips_bias(pos: tuple):
     global hips_bias
@@ -74,7 +76,6 @@ class myJoint:
             child.solve_pinned_joints()
 
     def parent_rotate(self, src_pos: tuple, angle: float) -> None:
-
         bias = vec_minus(self.position, src_pos)
         pos_offset = vec_rotate(bias, angle)
         self.position = (vec_add(pos_offset, src_pos))
@@ -102,12 +103,11 @@ class myJoint:
         if self.is_static and not self.pinned:     # Move Hips = Move whole body
             new_hips_bias = vec_add(hips_bias, vec_minus(position, pos_to_canvas(self.position)))
             set_hips_bias(new_hips_bias)
-            if self.parent:     # Following method should be called from root because they use recursion
-                self.parent.solve_pinned_joints()
-                self.parent.update_sketch_all()
-            else:
-                self.solve_pinned_joints()
-                self.update_sketch_all()
+            joint = self
+            while(joint.parent):    # Following method should be called from root because they use recursion
+                joint = joint.parent
+            joint.solve_pinned_joints()
+            joint.update_sketch_all()
             return
         movable_parents = self.find_movable_parents()[::-1]
         src_pos = movable_parents[0].position  # The last movable parent (The fix point)
@@ -174,6 +174,7 @@ class Body:
                 +- RArm
                     +- RWrist
         '''
+        # Following are in order
         self.Hips = myJoint(canvas, "Hips", (0, 0), STATIC)
         self.LHipJoint = myJoint(canvas, "LHipJoint", (-hipWidth/2, 0), STATIC, parent = self.Hips, rot_limit = (-pi, pi))
         self.LLeg = myJoint(canvas, "LLeg", (0, -upperLegLen), not STATIC, parent = self.LHipJoint, rot_limit = (0, pi))
@@ -192,13 +193,15 @@ class Body:
         self.RWrist = myJoint(canvas, "RWrist", (0, -lowerArmLen), not STATIC, parent = self.RArm)
 
         self.root = self.Hips
-        self.all_joints = [self.Hips, self.LHipJoint, self.LLeg, self.LFoot, self.RHipJoint, self.RLeg, self.RFoot, self.Chest, self.Neck, self.Head, self.LShoulder, self.LArm, self.LWrist, self.RShoulder, self.RArm, self.RWrist]
+        # Following are in order
+        self.all_joints = [self.Hips, self.Chest, self.Neck, self.Head, self.LHipJoint, self.LLeg, self.LFoot, self.RHipJoint, self.RLeg, self.RFoot, self.LShoulder, self.LArm, self.LWrist, self.RShoulder, self.RArm, self.RWrist]
+        self.joints_dict = {joint.name: joint for joint in self.all_joints}
 
 class SkeletonApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Skeleton Demo")
-        self.canvas = tk.Canvas(self.root, width=800, height=800)
+        self.canvas = tk.Canvas(self.root, width=600, height=600)
         self.canvas.pack()
         
         # Create joints
@@ -214,9 +217,6 @@ class SkeletonApp:
                     lowerLegLen = 0.4
                     )
 
-        # Create bones
-        # self.body.root.draw_bone(self.canvas)
-
         # Bind events
         for joint in self.body.all_joints:
             self.canvas.tag_bind(joint.name, "<ButtonPress-1>", self.start_drag)
@@ -224,7 +224,13 @@ class SkeletonApp:
             self.canvas.tag_bind(joint.name, "<ButtonRelease-1>", self.stop_drag)
             self.canvas.tag_bind(joint.name, "<ButtonRelease-3>", self.pin)
 
-        # Operating joint
+        # Buttons
+        start_button = tk.Button(self.root, text="Start", command=self.start_recording)
+        stop_button = tk.Button(self.root, text="Stop", command=self.stop_recording)
+        start_button.pack()
+        stop_button.pack()
+
+        self.is_recording = False
         self.dragging_joint = None
 
     def get_closest_joint(self, event):
@@ -254,6 +260,73 @@ class SkeletonApp:
         dragging_joint, closest_dist = self.get_closest_joint(event)
         if closest_dist < JOINT_RADIUS:
             dragging_joint.pin()
+
+    def start_recording(self):
+        self.is_recording = True
+        self.recording_thread = threading.Thread(target=self.record)
+        self.recording_thread.start()
+        print("Recording...")
+    
+    def stop_recording(self):
+        self.is_recording = False
+        path = "test.bvh"   # Output file
+        if self.recording_thread:
+            self.recording_thread.join()
+        create_bvh(path, self.body)
+        with open("record.txt", "r") as record_file:
+            frame_num = len(record_file.readlines())
+        with open(path, "a") as bvh_file, open("record.txt", "r") as record_file:
+            for line in record_file:
+                bvh_file.write(line)
+        with open(path, "w") as bvh_file:
+            lines = bvh_file.readlines()
+            for line in lines:
+                if "Frames: " in line:
+                    line = "Frames: " + str(frame_num) + "\n"
+                bvh_file.write(line)
+        print("Recording Stopped")
+
+    def record(self):
+        last_tick = time.time()
+        with open("record.txt", "w") as file:
+            pass
+        while self.is_recording:
+            with open("record.txt", "a") as file:
+                for joint in self.body.all_joints:
+                    file.write(str(joint.rotation) + " 0.0 0.0 ")
+                file.write("\n")
+            # Performance Control
+            print("Frame Time: ", time.time() - last_tick)
+            if time.time() - last_tick > 1/30:
+                raise ValueError("Performance Not Enough")
+            else:
+                time.sleep(1/30 - (time.time() - last_tick))
+                last_tick = time.time()
+
+def create_bvh_hierarchy(joint: myJoint) -> bvhio.Joint:
+    pos_bias = vec_minus(joint.position, joint.parent.position) if joint.parent else joint.position
+    thisBVH = bvhio.Joint(joint.name, (pos_bias[0], pos_bias[1], 0.0)).setEuler((joint.rotation, 0.0, 0.0))
+    for child in joint.children:
+        thisBVH.attach(create_bvh_hierarchy(child))
+    return thisBVH
+
+def solve_bvhio_bug(path: str, body: Body) -> None:
+    with open(path) as file:
+        lines = file.readlines()
+        for i in range(len(lines)):
+            if "OFFSET" in lines[i]:
+                print(lines[i + 2])
+                pos_JOINT = lines[i + 2].find("JOINT")
+                if pos_JOINT != -1:
+                    joint_name = lines[i + 2][pos_JOINT + 6:].split()[0]
+                    print("Joint name: ", joint_name)
+                    joint = body.joints_dict[joint_name]
+                    lines[i].replace("0.0 0.0 0.0", str(joint.rotation) + "0.0 0.0")
+
+def create_bvh(path:str, body: Body) -> None:
+    root = create_bvh_hierarchy(body.root)
+    bvhio.writeHierarchy(path, root, 1/30)
+    solve_bvhio_bug(path, body)
 
 if __name__ == "__main__":
     root = tk.Tk()
