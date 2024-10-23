@@ -1,11 +1,14 @@
 from math import pi, sin, cos, sqrt, atan2
 
-def constrain_sin_cos(data):
-    if data > 1:
-        return 1
-    elif data < -1:
-        return -1
+def constrain(data, constraint_low, constrain_high):
+    if data > constrain_high:
+        return constrain_high
+    elif data < constraint_low:
+        return constraint_low
     return data
+
+def constrain_sin_cos(data):
+    return constrain(data, -1, 1)
 
 def dist(p1, p2):
     return sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
