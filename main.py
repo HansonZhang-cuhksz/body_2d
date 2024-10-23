@@ -67,18 +67,18 @@ def ik(x, y, lengths):      # Result is absolute orientation in rad
 
     def get_min_length(lengths):
         n = len(lengths)
-        total_sum = sum(arr)
+        total_sum = sum(lengths)
         # dynamic programming dp，dp[j] is bool: possiblility to find subset with sum = j
-        dp = [False] * (total_sum // 2 + 1)
+        dp = [False] * int(total_sum // 2 + 1)
         dp[0] = True  # subset with sum = 0 ([]) exist
-        indices
-        for num in arr:
-            for j in range(total_sum // 2, num - 1, -1):
+        indices = [[] for _ in range(int(total_sum // 2 + 1))]
+        for i, num in enumerate(lengths):
+            for j in range(int(total_sum // 2), int(num - 1), -1):
                 if dp[j - num]:
                     dp[j] = True
                     indices[j] = indices[j - num] + [i]
         # get the num closest to total_sum // 2
-        for j in range(total_sum // 2, -1, -1):
+        for j in range(int(total_sum // 2), -1, -1):
             if dp[j]:
                 subset_sum1 = j
                 subset1_indices = indices[j]
@@ -90,20 +90,34 @@ def ik(x, y, lengths):      # Result is absolute orientation in rad
             subset_sum1, subset_sum2 = subset_sum2, subset_sum1
         return subset1_indices, subset2_indices, subset_sum2 - subset_sum1
 
-    distance = dist((x, y), (0, 0))
-    if distance > get_max_length(distance):
-        # Case too far to reach
-        return [atan2(y, x)] * len(lengths)
-    inward_joints, outward_joints, min_length = get_min_length(lengths)
-    if distance < min_length:
-        # Case too close to reach
-
-
     if len(lengths) == 1:
+        # Case 1 joint
+        print("Operating 1 joint")
         return [atan2(y, x)]
+
+    distance = dist((x, y), (0, 0))
+    if distance > get_max_length(lengths):
+        # Case too far to reach
+        print("Too far to reach")
+        return [atan2(y, x)] + [0.0] * (len(lengths) - 1)
+    # inward_joints, outward_joints, min_length = get_min_length(lengths)
+    # if distance < min_length:
+    #     # Case too close to reach
+    #     print("Too close to reach")
+    #     result = [None] * len(lengths)
+    #     for i in inward_joints:
+    #         result[i] = atan2(y, x) + pi
+    #     for i in outward_joints:
+    #         result[i] = atan2(y, x)
+    #     return result
+    
     if len(lengths) == 2:
+        # Case 2 joints, reachable
+        print("Operating 2 joints")
         return ik_2links(x, y, lengths[0], lengths[1])
     elif len(lengths) == 3:
+        # Case 3 joints, reachable
+        print("Operating 3 joints")
         return ik_3links(x, y, lengths[0], lengths[1], lengths[2])
     else:
         raise ValueError("Only support 2 or 3 links")
@@ -142,16 +156,15 @@ class myJoint:
         # Joint Oval
         # print("shifting", self.name, "to", self.position)
         canvas_pos = pos_to_canvas(self.position)
+        # print("canvas_pos", canvas_pos)
         self.canvas.coords(self.figure, canvas_pos[0]-JOINT_RADIUS, canvas_pos[1]-JOINT_RADIUS, canvas_pos[0]+JOINT_RADIUS, canvas_pos[1]+JOINT_RADIUS)
         # Bone Line
         if self.parent:
             self.canvas.coords(self.bone, pos_to_canvas(self.parent.position), pos_to_canvas(self.position))
 
     def parent_rotate(self, src_pos: tuple, angle: float) -> None:
-        # print("src_pos:", src_pos)
-        x = src_pos[0] - self.position[0]
-        y = src_pos[1] - self.position[1]
-        pos_offset = vec_rotate((x, y), angle)
+        bias = vec_minus(self.position, src_pos)
+        pos_offset = vec_rotate(bias, angle)
         self.position = (vec_add(pos_offset, src_pos))
         self.update_sketch()
         # Rotate children
@@ -180,12 +193,12 @@ class myJoint:
         # print([joint.name for joint in movable_parents])
         # print("dest_pos", body_pos)
 
-        x = body_pos[0] - src_pos[0]
-        y = body_pos[1] - src_pos[1]
+        y = body_pos[0] - src_pos[0]
+        x = -body_pos[1] + src_pos[1]
         lengths = [joint.length for joint in movable_parents[1:]]
         angles = ik(x, y, lengths)     # Inverse kinematic
 
-        for joint in movable_parents[1:]:      # Operate
+        for joint in movable_parents[:-1]:      # Operate
             joint.rotate(angles.pop(0) - joint.rotation)
 
 
@@ -221,19 +234,19 @@ class Body:
                     +- RWrist
         '''
         self.Hips = myJoint(canvas, "Hips", (0, 0), STATIC)
-        self.LHipJoint = myJoint(canvas, "LHipJoint", (-hipWidth/2, 0), not STATIC, parent = self.Hips, rot_limit = (-pi, 0))
+        self.LHipJoint = myJoint(canvas, "LHipJoint", (-hipWidth/2, 0), STATIC, parent = self.Hips, rot_limit = (-pi, 0))
         self.LLeg = myJoint(canvas, "LLeg", (0, -upperLegLen), not STATIC, parent = self.LHipJoint, rot_limit = (0, pi))
         self.LFoot = myJoint(canvas, "LFoot", (0, -lowerLegLen), not STATIC, parent = self.LLeg)
-        self.RHipJoint = myJoint(canvas, "RHipJoint", (hipWidth/2, 0), not STATIC, parent = self.Hips, rot_limit = (0, pi))
+        self.RHipJoint = myJoint(canvas, "RHipJoint", (hipWidth/2, 0), STATIC, parent = self.Hips, rot_limit = (0, pi))
         self.RLeg = myJoint(canvas, "RLeg", (0, -upperLegLen), not STATIC, parent = self.RHipJoint, rot_limit = (-pi, 0))
         self.RFoot = myJoint(canvas, "RFoot", (0, -lowerLegLen), not STATIC, parent = self.RLeg)
         self.Chest = myJoint(canvas, "Chest", (0, hipToChest), STATIC, parent = self.Hips, rot_limit = (-pi/4, pi/4))
         self.Neck = myJoint(canvas, "Neck", (0, chestToNeck), not STATIC, parent = self.Chest, rot_limit = (-pi/4, pi/4))
         self.Head = myJoint(canvas, "Head", (0, neckToHead), not STATIC, parent = self.Neck)
-        self.LShoulder = myJoint(canvas, "LShoulder", (-shoulderWidth/2, 0), not STATIC, parent = self.Chest, rot_limit = (-pi, pi))
+        self.LShoulder = myJoint(canvas, "LShoulder", (-shoulderWidth/2, 0), STATIC, parent = self.Chest, rot_limit = (-pi, pi))
         self.LArm = myJoint(canvas, "LArm", (0, -upperArmLen), not STATIC, parent = self.LShoulder, rot_limit = (-pi, 0))
         self.LWrist = myJoint(canvas, "LWrist", (0, -lowerArmLen), not STATIC, parent = self.LArm)
-        self.RShoulder = myJoint(canvas, "RShoulder", (shoulderWidth/2, 0), not STATIC, parent = self.Chest, rot_limit = (-pi, pi))
+        self.RShoulder = myJoint(canvas, "RShoulder", (shoulderWidth/2, 0), STATIC, parent = self.Chest, rot_limit = (-pi, pi))
         self.RArm = myJoint(canvas, "RArm", (0, -upperArmLen), not STATIC, parent = self.RShoulder, rot_limit = (0, pi))
         self.RWrist = myJoint(canvas, "RWrist", (0, -lowerArmLen), not STATIC, parent = self.RArm)
 
