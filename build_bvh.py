@@ -22,20 +22,20 @@ for joint in root.filter('LegR'):
 
 # Persists the current pose as pose.
 # This will calculate the keyframe differences to the rest pose.
-# root.writePose(0, recursive=True)
+root.writePose(0, recursive=True)
 
-# # The rest pose is loaded first to have the base pose again, this is not necessary.
-# root.loadRestPose(recursive=True)
+# The rest pose is loaded first to have the base pose again, this is not necessary.
+root.loadRestPose(recursive=True)
 
-# # Now the same thing again with other rotations two have two keyframes.
-# for joint in root.filter('LegL'):
-#     joint.Rotation *= bvhio.Euler.toQuatFrom((-0.523599,0,0))
-# for joint in root.filter('LegR'):
-#     joint.Rotation *= bvhio.Euler.toQuatFrom((+0.523599,0,0))
+# Now the same thing again with other rotations two have two keyframes.
+for joint in root.filter('LegL'):
+    joint.Rotation *= bvhio.Euler.toQuatFrom((-0.523599,0,0))
+for joint in root.filter('LegR'):
+    joint.Rotation *= bvhio.Euler.toQuatFrom((+0.523599,0,0))
 
-# # persists the current pose again as new pose.
-# # All keyframes between the first and this pose are linearly interpolated.
-# root.writePose(20, recursive=True)
+# persists the current pose again as new pose.
+# All keyframes between the first and this pose are linearly interpolated.
+root.writePose(20, recursive=True)
 
 # store the animation
 bvhio.writeHierarchy('test.bvh', root, 1/30, percision=4)

@@ -1,4 +1,4 @@
-from math import pi, sin, cos, sqrt, atan2
+from math import sin, cos, sqrt
 
 def constrain(data, constraint_low, constrain_high):
     if data > constrain_high:

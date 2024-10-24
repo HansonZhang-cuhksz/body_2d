@@ -2,12 +2,15 @@ import bvhio
 import tkinter as tk
 from my_math import *
 from inverse_kinematic import ik
+from math import pi, degrees
 import threading
 import time
 
 STATIC = True
 JOINT_RADIUS = 10
 hips_bias = (300, 300)
+
+path = "test.bvh"
 
 def set_hips_bias(pos: tuple):
     global hips_bias
@@ -35,9 +38,10 @@ class myJoint:
         self.is_static = is_static
         self.parent = parent
         self.children = []
+        self.initial_pos = position
         self.position = vec_add(position, parent.position) if parent else position  # Absolute position
         self.update_canvas_pos()
-        self.rotation = 0    # Relative orientation
+        self.rotation = 0.0    # Relative orientation
         self.canvas = canvas
         self.pinned = False
 
@@ -194,7 +198,7 @@ class Body:
 
         self.root = self.Hips
         # Following are in order
-        self.all_joints = [self.Hips, self.Chest, self.Neck, self.Head, self.LHipJoint, self.LLeg, self.LFoot, self.RHipJoint, self.RLeg, self.RFoot, self.LShoulder, self.LArm, self.LWrist, self.RShoulder, self.RArm, self.RWrist]
+        self.all_joints = [self.Hips, self.LHipJoint, self.LLeg, self.LFoot, self.RHipJoint, self.RLeg, self.RFoot, self.Chest, self.Neck, self.Head, self.LShoulder, self.LArm, self.LWrist, self.RShoulder, self.RArm, self.RWrist]
         self.joints_dict = {joint.name: joint for joint in self.all_joints}
 
 class SkeletonApp:
@@ -230,6 +234,7 @@ class SkeletonApp:
         start_button.pack()
         stop_button.pack()
 
+        self.bvhio_root = create_bvh(path, self.body)
         self.is_recording = False
         self.dragging_joint = None
 
@@ -269,39 +274,40 @@ class SkeletonApp:
     
     def stop_recording(self):
         self.is_recording = False
-        path = "test.bvh"   # Output file
         if self.recording_thread:
             self.recording_thread.join()
-        create_bvh(path, self.body)
+        bvhio.writeHierarchy(path, self.bvhio_root, 1/30)
         with open("record.txt", "r") as record_file:
             frame_num = len(record_file.readlines())
-        with open(path, "a") as bvh_file, open("record.txt", "r") as record_file:
-            for line in record_file:
-                bvh_file.write(line)
+        with open(path, "r") as bvh_file:
+            bvh_lines = bvh_file.readlines()[:-1]
         with open(path, "w") as bvh_file:
-            lines = bvh_file.readlines()
-            for line in lines:
+            for line in bvh_lines:
                 if "Frames: " in line:
                     line = "Frames: " + str(frame_num) + "\n"
                 bvh_file.write(line)
+        with open(path, "a") as bvh_file, open("record.txt", "r") as record_file:
+            lines = record_file.readlines()
+            for i in range(len(lines)):
+                lines[i] = lines[i][:-2] + ('\n' if i != len(lines) - 1 else '')
+                bvh_file.write(lines[i])
+        solve_bvhio_bug(path, self.body)
         print("Recording Stopped")
 
     def record(self):
         last_tick = time.time()
-        with open("record.txt", "w") as file:
-            pass
-        while self.is_recording:
-            with open("record.txt", "a") as file:
-                for joint in self.body.all_joints:
-                    file.write(str(joint.rotation) + " 0.0 0.0 ")
-                file.write("\n")
-            # Performance Control
-            print("Frame Time: ", time.time() - last_tick)
-            if time.time() - last_tick > 1/30:
-                raise ValueError("Performance Not Enough")
-            else:
-                time.sleep(1/30 - (time.time() - last_tick))
-                last_tick = time.time()
+        with open("record.txt", 'w') as file:    # Delete file
+            while self.is_recording:
+                for joint in self.body.all_joints[1:]:  # Exclude Hips
+                    file.write(str(degrees(joint.rotation)) + " 0.0 0.0 ")
+                file.write('\n')
+
+                # Performance Control
+                if time.time() - last_tick > 1/30:
+                    raise ValueError("Performance Not Enough")
+                else:
+                    time.sleep(1/30 - (time.time() - last_tick))
+                    last_tick = time.time()
 
 def create_bvh_hierarchy(joint: myJoint) -> bvhio.Joint:
     pos_bias = vec_minus(joint.position, joint.parent.position) if joint.parent else joint.position
@@ -311,22 +317,25 @@ def create_bvh_hierarchy(joint: myJoint) -> bvhio.Joint:
     return thisBVH
 
 def solve_bvhio_bug(path: str, body: Body) -> None:
-    with open(path) as file:
+    with open(path, "r") as file:
         lines = file.readlines()
+    with open(path, "w") as file:
         for i in range(len(lines)):
             if "OFFSET" in lines[i]:
-                print(lines[i + 2])
-                pos_JOINT = lines[i + 2].find("JOINT")
+                pos_JOINT = lines[i - 2].find("JOINT")
                 if pos_JOINT != -1:
-                    joint_name = lines[i + 2][pos_JOINT + 6:].split()[0]
-                    print("Joint name: ", joint_name)
+                    joint_name = lines[i - 2][pos_JOINT + 6:].split()[0]
                     joint = body.joints_dict[joint_name]
-                    lines[i].replace("0.0 0.0 0.0", str(joint.rotation) + "0.0 0.0")
+                    lines[i] = lines[i].replace("0.0 0.0 0.0", str(joint.initial_pos[0]) + ' ' + str(joint.initial_pos[1]) + ' 0.0')
+                    if joint_name != "Hips":
+                        lines[i + 1] = ' ' * pos_JOINT + "  CHANNELS 3 Zrotation Xrotation Yrotation\n"
+        for line in lines:
+            file.write(line)
 
-def create_bvh(path:str, body: Body) -> None:
+def create_bvh(path:str, body: Body) -> bvhio.Joint:
     root = create_bvh_hierarchy(body.root)
-    bvhio.writeHierarchy(path, root, 1/30)
-    solve_bvhio_bug(path, body)
+    root.writeRestPose(recursive=True)
+    return root
 
 if __name__ == "__main__":
     root = tk.Tk()
