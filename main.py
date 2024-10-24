@@ -55,6 +55,10 @@ class myJoint:
         if parent:
             self.bone = canvas.create_line(pos_to_canvas(self.parent.position), pos_to_canvas(self.position))
 
+    def get_absolute_pos(self) -> tuple:
+        current_canvas_pos = pos_to_canvas(self.position)
+        return (current_canvas_pos[0]/200, 3 - current_canvas_pos[1]/200)
+
     def update_canvas_pos(self) -> None:
         self.canvas_pos = pos_to_canvas(self.position)
 
@@ -122,26 +126,25 @@ class myJoint:
             y = body_pos[0] - src_pos[0]
             x = -body_pos[1] + src_pos[1]
         lengths = [joint.length for joint in movable_parents[1:]]
+        positions = [joint.position for joint in movable_parents]
 
         # Constraints
         constraints = []
         for joint in movable_parents[:-1]:
             constraints.append(joint.rot_limit)
 
-        self.special_joints_alter_rot_limit(x, y)
-        angles = ik(x, y, lengths, constraints)     # Inverse kinematic
+        self.special_joints_alter_rot_limit(x, y, movable_parents)
+        angles = ik(x, y, lengths, positions, constraints)     # Inverse kinematic
 
         for joint in movable_parents[:-1]:      # Operate
             joint.rotate(angles.pop(0) - joint.rotation)
 
-    def special_joints_alter_rot_limit(self, x_bias, y_bias) -> None:
-        if self.name == "LWrist" or self.name == "RWrist":
-            # When moving arm, the ankle will always point downward
-            self.parent.rot_limit = (0, pi) if y_bias > 0 else (-pi, 0)
-
-        if self.name == "LFoot" or self.name == "RFoot":
-            # When moving leg, the knee will always point upward
-            self.parent.rot_limit = (0, pi) if y_bias < 0 else (-pi, 0)
+    def special_joints_alter_rot_limit(self, x_bias, y_bias, movable_parents) -> None:
+        for joint in movable_parents:
+            if joint.name == "LArm" or joint.name == "RArm":    # Ankles always point downward.
+                self.parent.rot_limit = (0, pi) if y_bias > 0 else (-pi, 0)
+            if joint.name == "LLeg" or joint.name == "RLeg":    # Knees always point upward.
+                self.parent.rot_limit = (0, pi) if y_bias < 0 else (-pi, 0)
 
     def pin(self) -> None:
         self.pinned = not self.pinned
@@ -236,6 +239,7 @@ class SkeletonApp:
 
         self.bvhio_root = create_bvh(path, self.body)
         self.is_recording = False
+        self.recording_thread = None
         self.dragging_joint = None
 
     def get_closest_joint(self, event):
@@ -298,6 +302,8 @@ class SkeletonApp:
         last_tick = time.time()
         with open("record.txt", 'w') as file:    # Delete file
             while self.is_recording:
+                root_absolute_pos = self.body.root.get_absolute_pos()
+                file.write(str(root_absolute_pos[0]) + ' ' + str(root_absolute_pos[1]) + " 0.0 ")   # Write Root offset
                 for joint in self.body.all_joints[1:]:  # Exclude Hips
                     file.write(str(degrees(joint.rotation)) + " 0.0 0.0 ")
                 file.write('\n')
@@ -327,8 +333,10 @@ def solve_bvhio_bug(path: str, body: Body) -> None:
                     joint_name = lines[i - 2][pos_JOINT + 6:].split()[0]
                     joint = body.joints_dict[joint_name]
                     lines[i] = lines[i].replace("0.0 0.0 0.0", str(joint.initial_pos[0]) + ' ' + str(joint.initial_pos[1]) + ' 0.0')
-                    if joint_name != "Hips":
-                        lines[i + 1] = ' ' * pos_JOINT + "  CHANNELS 3 Zrotation Xrotation Yrotation\n"
+                    lines[i + 1] = ' ' * pos_JOINT + "  CHANNELS 3 Zrotation Xrotation Yrotation\n"
+                pos_ROOT = lines[i - 2].find("ROOT")
+                if pos_ROOT != -1:
+                    lines[i + 1] = ' ' * pos_ROOT + "  CHANNELS 3 Xposition Yposition Zposition\n"
         for line in lines:
             file.write(line)
 

@@ -1,40 +1,41 @@
 import tkinter as tk
 from math import atan2, sqrt, cos, sin, pi
 import numpy as np
+from inverse_kinematic import ik
 
 def constrain_sin_cos(value):
     return max(-1, min(1, value))
 
-def ik_2links(x, y, l1, l2):
-    cos_theta2 = constrain_sin_cos((x**2 + y**2 - l1**2 - l2**2) / (2 * l1 * l2))
-    sin_theta2 = sqrt(1 - cos_theta2**2)
-    theta2 = atan2(sin_theta2, cos_theta2)
+# def ik_2links(x, y, l1, l2):
+#     cos_theta2 = constrain_sin_cos((x**2 + y**2 - l1**2 - l2**2) / (2 * l1 * l2))
+#     sin_theta2 = sqrt(1 - cos_theta2**2)
+#     theta2 = atan2(sin_theta2, cos_theta2)
     
-    k1 = l1 + l2 * cos_theta2
-    k2 = l2 * sin_theta2
-    theta1 = atan2(y, x) - atan2(k2, k1)
+#     k1 = l1 + l2 * cos_theta2
+#     k2 = l2 * sin_theta2
+#     theta1 = atan2(y, x) - atan2(k2, k1)
 
-    return [theta1, theta2]
+#     return [theta1, theta2]
 
-def ik_3links(x, y, L1, L2, L3):
-    # Calculate the position of the wrist (ignoring the third link)
-    wrist_x = x - L3 * np.cos(np.arctan2(y, x))
-    wrist_y = y - L3 * np.sin(np.arctan2(y, x))
+# def ik_3links(x, y, L1, L2, L3):
+#     # Calculate the position of the wrist (ignoring the third link)
+#     wrist_x = x - L3 * np.cos(np.arctan2(y, x))
+#     wrist_y = y - L3 * np.sin(np.arctan2(y, x))
 
-    # Use the cosine rule to find the angles
-    cos_theta2 = (wrist_x**2 + wrist_y**2 - L1**2 - L2**2) / (2 * L1 * L2)
-    theta2 = np.arccos(np.clip(cos_theta2, -1.0, 1.0))  # Clipping to avoid numerical errors
+#     # Use the cosine rule to find the angles
+#     cos_theta2 = (wrist_x**2 + wrist_y**2 - L1**2 - L2**2) / (2 * L1 * L2)
+#     theta2 = np.arccos(np.clip(cos_theta2, -1.0, 1.0))  # Clipping to avoid numerical errors
 
-    theta1 = np.arctan2(wrist_y, wrist_x) - np.arctan2(L2 * np.sin(theta2), L1 + L2 * np.cos(theta2))
+#     theta1 = np.arctan2(wrist_y, wrist_x) - np.arctan2(L2 * np.sin(theta2), L1 + L2 * np.cos(theta2))
 
-    theta3 = np.arctan2(y, x) - theta1 - theta2
+#     theta3 = np.arctan2(y, x) - theta1 - theta2
 
-    # Convert angles from radians to degrees
-    theta1 = np.degrees(theta1)
-    theta2 = np.degrees(theta2)
-    theta3 = np.degrees(theta3)
+#     # Convert angles from radians to degrees
+#     theta1 = np.degrees(theta1)
+#     theta2 = np.degrees(theta2)
+#     theta3 = np.degrees(theta3)
 
-    return theta1, theta2, theta3
+#     return theta1, theta2, theta3
 
 def visualize():
     x = float(entry_x.get())
@@ -43,7 +44,9 @@ def visualize():
     l2 = float(entry_l2.get())
     l3 = float(entry_l3.get())
     
-    theta1, theta2, theta3 = ik_3links(x, y, l1, l2, l3)
+    theta1, theta2, theta3 = ik(x, y, [l1, l2, l3], [(0, 0), (100, 0), (100, 100), (100, 200)])
+
+    theta1 = theta1 if theta1 else 0
 
     print(theta1, theta2, theta3)
     
